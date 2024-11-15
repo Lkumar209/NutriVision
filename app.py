@@ -4,6 +4,7 @@ import numpy as np
 from food_detector import FoodDetector
 from nutrition_database import NutritionDB
 #HI vir its troy
+#its me mario
 app = Flask(__name__)
 food_detector = FoodDetector()
 nutrition_db = NutritionDB()
