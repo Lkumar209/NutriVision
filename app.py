@@ -13,7 +13,7 @@ def analyze_food():
         # Get image from request
         image = request.files['image'].read()
         nparr = np.fromstring(image, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLO   R)
         
         # Detect food items
         detected_items = food_detector.analyze_image(img)
