@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Food Nutrition Analyzer</title>
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f7f7f7;
+        }
+        .upload-container {
+            border: 2px dashed #3d5a80;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        #preview {
+            max-width: 300px;
+            margin: 20px auto;
+            display: none;
+        }
+        #results {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .hidden {
+            display: none;
+        }
+        button {
+            background-color: #3d5a80;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #98c1d9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Food Nutrition Analyzer</h1>
+    
+    <div class="upload-container">
+        <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)">
+        <button onclick="analyzeImage()">Analyze Food</button>
+    </div>
+
+    <img id="preview" alt="Preview">
+    
+    <div id="loading" class="hidden">
+        Analyzing your food...
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        function previewImage(event) {
+            const preview = document.getElementById('preview');
+            preview.src = URL.createObjectURL(event.target.files[0]);
+            preview.style.display = 'block';
+        }
+
+        async function analyzeImage() {
+            const fileInput = document.getElementById('imageInput');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            if (!fileInput.files[0]) {
+                alert('Please select an image first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+
+            loading.classList.remove('hidden');
+            results.innerHTML = '';
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    results.innerHTML = `<p>Error: ${data.error}</p>`;
+                } else {
+                    // Parse and display the analysis results
+                    results.innerHTML = `
+                        <h3>Analysis Results:</h3>
+                        <pre>${JSON.stringify(data.analysis, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                results.innerHTML = `<p>Error: ${error.message}</p>`;
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
