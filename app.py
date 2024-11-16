@@ -1,10 +1,9 @@
-from flask import Flask, request, jsonify
-import cv2
-import numpy as np
-from food_detector import FoodDetector
-from nutrition_database import NutritionDB
-#HI vir its troy
-#its me mario
+import os
+from flask import Flask, render_template, request, jsonify
+from groq import Groq
+from dotenv import load_dotenv
+import base64
+
 app = Flask(__name__)
 load_dotenv()
 
@@ -60,29 +59,24 @@ def index():
     return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
-def analyze_food():
-    try:
-        # Get image from request
-        image = request.files['image'].read()
-        nparr = np.fromstring(image, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        # Detect food items
-        detected_items = food_detector.analyze_image(img)
-        
-        # Get nutritional information
-        nutritional_info = nutrition_db.get_nutrition_data(detected_items)
-        
-        return jsonify({
-            'status': 'success',
-            'detected_items': detected_items,
-            'nutritional_info': nutritional_info
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 400
+def analyze():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image uploaded'}), 400
+    
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    # Convert image to base64
+    image_data = file.read()
+    image_base64 = base64.b64encode(image_data).decode('utf-8')
+    
+    # Analyze image using Groq
+    analysis_result = analyze_food_image(image_base64)
+    
+    return jsonify({
+        'analysis': analysis_result
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
