@@ -1,82 +1,65 @@
-import os
-from flask import Flask, render_template, request, jsonify
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
-import base64
+load_dotenv() ## load all the environemnt variables
+import streamlit as st
+import os
+from PIL import Image
 
-app = Flask(__name__)
-load_dotenv()
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Initialize Groq client
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY"),
-)
+def get_gemini_response(input_prompt, image):
+    # Use the updated model name
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    response = model.generate_content([input_prompt, image[0]])
+    return response.text
 
-def create_system_message():
-    return """You are a nutrition expert specialized in analyzing food images. When given an image, please:
-1. Identify all food items in the image
-2. Estimate calories for each item
-3. Provide nutritional information including protein, carbs, and fats
-4. Format the response in a clean JSON structure
-5. Keep descriptions concise and focused on nutritional content"""
 
-def analyze_food_image(image_base64):
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": create_system_message()
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": image_base64
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": "Analyze this food image and provide nutritional information including calories, protein, carbs, and fats. Format the response as JSON."
-                        }
-                    ]
-                }
-            ],
-            model="llava-v1.5-7b-groq",
-            max_tokens=1024,
-            temperature=0.1,
-        )
-        return chat_completion.choices[0].message.content
-    except Exception as e:
-        return str(e)
+def input_image_setup(uploaded_file):
+    # Check if a file has been uploaded
+    if uploaded_file is not None:
+        # Read the file into bytes
+        bytes_data = uploaded_file.getvalue()
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/analyze', methods=['POST'])
-def analyze():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image uploaded'}), 400
+        image_parts = [
+            {
+                "mime_type": uploaded_file.type,  # Get the mime type of the uploaded file
+                "data": bytes_data
+            }
+        ]
+        return image_parts
+    else:
+        raise FileNotFoundError("No file uploaded")
     
-    file = request.files['image']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    # Convert image to base64
-    image_data = file.read()
-    image_base64 = base64.b64encode(image_data).decode('utf-8')
-    
-    # Analyze image using Groq
-    analysis_result = analyze_food_image(image_base64)
-    
-    return jsonify({
-        'analysis': analysis_result
-    })
+##initialize our streamlit app
 
-if __name__ == '__main__':
-    app.run(debug=True)
+st.set_page_config(page_title="The Nutritionist")
+
+st.header("The Nutritionist")
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+image=""   
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image.", use_column_width=True)
+
+
+submit=st.button("Tell me about the calories")
+
+input_prompt="""
+You are an expert in nutritionist where you need to see the food items from the image
+               and calculate the total calories, also provide the details of every food items with calories intake
+               is below format
+
+               1. Item 1 - no of calories
+               2. Item 2 - no of calories
+               ----
+               ----
+Finally you can also mention whether the food is healthy, balanced or not healthy and what all additional food items can be added in the diet which are healthy.
+
+"""
+
+## If submit button is clicked
+
+if submit:
+    image_data=input_image_setup(uploaded_file)
+    response=get_gemini_response(input_prompt,image_data)
+    st.write(response)

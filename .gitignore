@@ -1,20 +1,12 @@
-# Virtual environment
-venv/
-env/
-__pycache__/
-*.pyc
-
-# Environment variables
+# Ignore environment files
 .env
 
-# IDE specific files
-.vscode/
-.idea/
+# Ignore virtual environment
+venv/
 
-# Temporary files
-*.log
-*.tmp
-
-# Upload directory contents
-uploads/*
-!uploads/.gitkeep
+# Ignore Streamlit cache and logs
+.streamlit/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
