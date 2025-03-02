@@ -1,182 +1,327 @@
-
 import google.generativeai as genai
 from dotenv import load_dotenv
 import streamlit as st
 import os
 from PIL import Image
-import io
+import time
 
+# Load environment variables
 load_dotenv()
+
+# Configure the API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-@st.cache_resource
-def initialize_model():
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-@st.cache_data(ttl=3600)
-def get_gemini_response(_model, input_prompt, image_hash):
-    try:
-        response = _model.generate_content([input_prompt, st.session_state.image_data[0]])
-        return response.text
-    except Exception as e:
-        return f"Error in analysis: {str(e)}"
-
-def get_modification_response(_model, modification_prompt):
-    try:
-        response = _model.generate_content([modification_prompt, st.session_state.image_data[0]])
-        return response.text
-    except Exception as e:
-        return f"Error in generating modification: {str(e)}"
-
-def process_image(upload):
-    if upload is not None:
-        image = Image.open(upload)
-        max_size = 1024
-        if max(image.size) > max_size:
-            ratio = max_size / max(image.size)
-            new_size = tuple(int(dim * ratio) for dim in image.size)
-            image = image.resize(new_size, Image.Resampling.LANCZOS)
-        
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG', quality=85, optimize=True)
-        img_byte_arr = img_byte_arr.getvalue()
-        
-        return image, [{
-            "mime_type": "image/jpeg",
-            "data": img_byte_arr
-        }]
-    return None, None
-
+# Set page configuration
 st.set_page_config(
-    page_title="NutriVision - Food Nutrition Scanner",
+    page_title="NutriVision",
     page_icon="🥗",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
-if 'image_data' not in st.session_state:
-    st.session_state.image_data = None
-if 'analysis_complete' not in st.session_state:
-    st.session_state.analysis_complete = False
-if 'custom_prompt' not in st.session_state:
-    st.session_state.custom_prompt = ""
-if 'show_custom_input' not in st.session_state:
-    st.session_state.show_custom_input = False
-
+# Custom CSS for dark theme with additional fixes for file uploader
 st.markdown("""
-    <style>
-    .main { padding: 2rem; }
-    .stButton>button {
-        width: 100%;
-        background-color: #4CAF50;
-        color: white;
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-        border: none;
-        margin-bottom: 0.5rem;
+<style>
+    /* Overall page background */
+    .stApp {
+        background-color: #121212;
+        color: #e0e0e0;
     }
-    .stButton>button:hover { background-color: #45a049; }
-    .upload-text {
-        font-size: 1.2rem;
+    
+    /* Remove all default white containers and backgrounds */
+    div.block-container {
+        padding-top: 2rem;
+    }
+    
+    div.stFileUploader, section, div.stAlert, div[data-testid="stForm"] {
+        background-color: #1e1e1e !important;
+        border-color: #333333 !important;
+    }
+    
+    /* Target ALL white boxes and containers */
+    div, section, header, footer, main, article, aside, nav, form, label, input, button {
+        background-color: transparent !important;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Specific white box fix - targeting all possible elements with background */
+    [class*="css"], [class*="st-"], [data-testid*="st"], .stMarkdown {
+        background-color: transparent !important;
+    }
+    
+    /* Special fix for file uploader */
+    .stFileUploader > div, .stFileUploader > div > div, [data-testid="stFileUploader"] {
+        background-color: #1e1e1e !important;
+        color: #e0e0e0 !important;
+        border-radius: 10px !important;
+    }
+    
+    /* The file uploader drop area */
+    .stFileUploader > div > div > div, [data-testid="stFileUploadDropzone"] {
+        background-color: #2d3748 !important;
+        border: 1px dashed #4a5568 !important;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Main container styling */
+    .main-container {
+        background-color: #1e1e1e;
+        border-radius: 10px;
+        padding: 2rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Custom card container */
+    .card-container {
+        background-color: #2d3748 !important;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Logo styling */
+    .logo-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         margin-bottom: 1rem;
     }
-    .title {
-        color: #2E7D32;
+    
+    .logo-text {
+        color: #4CAF50;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-left: 0.5rem;
+    }
+    
+    /* Streamlit button customization */
+    .stButton > button {
+        background-color: #4CAF50 !important;
+        color: white !important;
+        font-weight: 500;
+        border-radius: 30px;
+        padding: 0.5rem 2rem;
+        border: none;
+        width: 100%;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #3e8e41 !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        transform: translateY(-2px);
+    }
+    
+    /* Header styling */
+    h1 {
+        color: #6FCF97 !important;
+        font-weight: 700 !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    /* Subheader styling */
+    h2, h3 {
+        color: #BBBBBB !important;
+        font-weight: 500 !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Results container */
+    .results-container {
+        background-color: #2d3748 !important;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Footer styling */
+    .footer {
         text-align: center;
+        color: #888;
+        margin-top: 3rem;
+        font-size: 0.8rem;
         padding: 1rem;
-        border-bottom: 2px solid #4CAF50;
-        margin-bottom: 2rem;
+        border-top: 1px solid #333;
     }
-    .stSpinner > div { border-top-color: #4CAF50 !important; }
-    .modification-button {
-        margin: 0.25rem;
-        padding: 0.5rem;
+    
+    /* Markdown text */
+    p, li, span {
+        color: #BBBBBB !important;
     }
-    </style>
+    
+    /* Spinner */
+    .stSpinner > div > div {
+        border-color: #4CAF50 transparent transparent !important;
+    }
+    
+    /* Caption text */
+    .caption {
+        color: #999999 !important;
+    }
+    
+    /* Upload icon styling */
+    .upload-icon {
+        font-size: 1.5rem;
+        margin-right: 0.5rem;
+        color: #4CAF50;
+    }
+    
+    /* Browse files button */
+    button[data-testid="stFileUploaderDropzoneButtonText"] {
+        background-color: #333 !important;
+        color: #CCC !important;
+        border-radius: 5px !important;
+        border: 1px solid #555 !important;
+        transition: all 0.3s ease;
+    }
+    
+    button[data-testid="stFileUploaderDropzoneButtonText"]:hover {
+        background-color: #444 !important;
+        border-color: #666 !important;
+    }
+</style>
 """, unsafe_allow_html=True)
 
-model = initialize_model()
+def get_gemini_response(input_prompt, image):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([input_prompt, image[0]])
+        return response.text
+    except Exception as e:
+        return f"Error generating response: {str(e)}"
 
-st.markdown("<h1 class='title'>🥗 NutriVision</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; margin-bottom: 2rem;'>Upload your meal, know it, eat better!</p>", unsafe_allow_html=True)
-
-with st.container():
-    st.markdown("""
-        <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 2rem;">
-            <p class="upload-text" style="text-align: center;">📸 Choose an image:</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    uploaded_file = st.file_uploader(
-        "",
-        type=["jpg", "jpeg", "png"],
-        label_visibility="collapsed",
-        key="file_uploader"
-    )
-
+def input_image_setup(uploaded_file):
     if uploaded_file is not None:
-        display_image, image_data = process_image(uploaded_file)
-        if display_image:
-            st.session_state.image_data = image_data
-            st.image(display_image, use_column_width=True)
+        bytes_data = uploaded_file.getvalue()
+        image_parts = [
+            {
+                "mime_type": uploaded_file.type,
+                "data": bytes_data
+            }
+        ]
+        return image_parts
+    else:
+        raise FileNotFoundError("No file uploaded")
 
-    analyze_button_html = """
+# Custom logo and header
+st.markdown("""
+<div class="logo-container">
+    <img src="https://img.icons8.com/color/48/000000/salad.png" alt="Salad Icon" width="48" height="48">
+    <span class="logo-text">NutriVision</span>
+</div>
+""", unsafe_allow_html=True)
+
+# Subtitle
+st.markdown("<h3 style='text-align: center; font-weight: 400; color: #888;'>AI-Powered Nutrition Analysis</h3>", unsafe_allow_html=True)
+
+# Card container for main content
+st.markdown("<div class='card-container'>", unsafe_allow_html=True)
+
+# App description
+st.markdown("""
+Take a photo of your meal and instantly get nutritional information, calorie count, 
+and personalized health recommendations.
+""")
+
+# Custom file upload label
+st.markdown("""
+<div style="margin: 1.5rem 0 1rem 0;">
+    <span class="upload-icon">📸</span>
+    <span style="font-size: 1.1rem; font-weight: 500;">Upload Food Image</span>
+</div>
+""", unsafe_allow_html=True)
+
+# File upload section
+uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
+
+# Image preview and analysis
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
     
-    """
-    analyze_button_script = """
-    <script>
-        document.getElementById('analyze_button').onclick = function() {
-            document.getElementById('streamlitSubmitButton').click();
-        }
-    </script>
-    """
-
-    st.markdown(analyze_button_html, unsafe_allow_html=True)
-    st.markdown(analyze_button_script, unsafe_allow_html=True)
-    submit = st.button("Analyze Nutrition", key="streamlitSubmitButton", use_container_width=False)
-
-if submit and st.session_state.image_data:
-    with st.spinner('Analyzing your meal...'):
-        input_prompt = "Analyze the nutritional content of the meal in the uploaded image."
-
-        image_hash = hash(str(st.session_state.image_data[0]['data']))
-        response = get_gemini_response(model, input_prompt, image_hash)
+    # Create a nice card for the uploaded image
+    st.markdown("<div class='card-container' style='background-color: #253245 !important;'>", unsafe_allow_html=True)
+    
+    # Create two columns for layout
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.image(image, caption="", use_column_width=True)
+    
+    with col2:
+        st.markdown("<h3 style='color: #6FCF97 !important;'>Ready for Analysis</h3>", unsafe_allow_html=True)
+        st.markdown("Your food image has been successfully uploaded. Click below to analyze its nutritional content.")
         
-        st.markdown("### 📊 Analysis Results")
-        st.markdown("""
-            <div style='background-color: #f5f5f5; 
-                        padding: 1.5rem; 
-                        border-radius: 0.5rem; 
-                        border-left: 5px solid #4CAF50;'>
-        """, unsafe_allow_html=True)
-        st.write(response)
+        # Submit button with better styling
+        st.markdown("<div style='margin-top: 1.5rem;'>", unsafe_allow_html=True)
+        submit = st.button("Analyze Nutrition 🔍")
         st.markdown("</div>", unsafe_allow_html=True)
-        st.session_state.analysis_complete = True
-elif submit:
-    st.warning("Please upload an image first! 📸")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
-if st.session_state.analysis_complete:
-    st.markdown("### 🔄 Modify Recipe")
-    
-    mod_col1, mod_col2 = st.columns([3, 1])
-    
-    with mod_col1:
-        st.markdown("<p style='margin-top: 1rem;'>Use the button to the right to ask anything about this meal!</p>", unsafe_allow_html=True)
-    
-    with mod_col2:
-        if st.button("Other Options 🔍"):
-            st.session_state.show_custom_input = True
+# Input prompt with detailed instructions
+input_prompt = """
+You are NutriVision, an advanced AI nutritionist specialized in analyzing food images. Examine the provided image and:
 
-    if st.session_state.show_custom_input:
-        custom_input = st.text_input(
-            "Ask anything about this meal:",
-            key="custom_query",
-            help="Press Enter after typing your question"
-        )
+1. Identify all food items visible in the image
+2. Calculate the approximate calories for each item
+3. Provide nutritional breakdown in this format:
+
+**Food Items and Calories:**
+- Item 1: ~XX calories (key nutrients)
+- Item 2: ~XX calories (key nutrients)
+...
+
+**Total Meal Analysis:**
+- Total Calories: XXX
+- Protein: XX g
+- Carbs: XX g
+- Fat: XX g
+
+**Health Assessment:**
+[Provide a brief assessment of whether this meal is healthy, balanced, or needs improvement]
+
+**Recommendations:**
+[Suggest 2-3 specific, actionable improvements or complementary foods to balance the meal]
+"""
+
+# Process the image when submit is clicked
+if 'submit' in locals() and submit:
+    try:
+        st.markdown("<div class='results-container'>", unsafe_allow_html=True)
         
-        if custom_input:
-            with st.spinner('Generating response...'):
-                custom_response = get_modification_response(model, custom_input)
-                st.success(custom_response)
+        # Create a loading animation
+        with st.spinner("🔍 Analyzing your meal..."):
+            image_data = input_image_setup(uploaded_file)
+            response = get_gemini_response(input_prompt, image_data)
+            time.sleep(1)  # Simulate processing time for better UX
+        
+        # Display results with better formatting
+        st.markdown("<h2 style='color: #6FCF97 !important;'>📊 Nutrition Analysis Results</h2>", unsafe_allow_html=True)
+        
+        # Format the response with custom styling
+        formatted_response = response.replace('**', '<span style="color:#6FCF97; font-weight:600;">')
+        formatted_response = formatted_response.replace('**', '</span>')
+        st.markdown(f"<div style='line-height:1.6;'>{formatted_response}</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Custom footer with better styling
+st.markdown("""
+<div class='footer'>
+    <div style="display: flex; justify-content: center; align-items: center; gap: 1rem;">
+        <span>NutriVision</span>
+        <span>•</span>
+        <span>Powered by Gemini AI</span>
+        <span>•</span>
+        <span>Created with Streamlit</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
